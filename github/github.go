@@ -31,14 +31,9 @@ type ListOptions struct {
 	// When Page is 0, the first page is fetched.
 	Page int `url:"page,omitempty"`
 
-	// PerPage is the number of results to include per page. If PerPage is 0
-	// (the zero value), per_page is omitted from the request query string and
-	// the GitHub API default page size (currently 30) applies. In that case
-	// the server may still echo an explicit per_page value in Link headers;
-	// the pagination helpers on Response (NextPage, PrevPage, FirstPage,
-	// LastPage) extract only the page number from those links, so they work
-	// identically whether per_page was sent explicitly or defaulted by the
-	// server.
+	// PerPage is the number of results per page. Zero means the API default
+	// (currently 30): per_page is omitted from the request, and Link-header
+	// parsing on Response is unaffected either way.
 	PerPage int `url:"per_page,omitempty"`
 }
 
@@ -69,11 +64,9 @@ func newResponse(r *http.Response) *Response {
 	return response
 }
 
-// populatePageValues parses the HTTP Link header of the response and fills in
-// the pagination field values from the "page" query parameter of each link
-// relation. Links that omit per_page (either in the request or in the echoed
-// URL) are handled the same way as links that carry an explicit per_page,
-// because only the page number is extracted.
+// populatePageValues parses the HTTP Link header and fills in the pagination
+// fields from the "page" query parameter of each link relation. Invalid,
+// non-numeric, or page-less links are skipped.
 func (r *Response) populatePageValues() {
 	if r.Response == nil || r.Response.Header == nil {
 		return
@@ -125,11 +118,8 @@ func (r *Response) populatePageValues() {
 // addOptions adds the parameters in opts as URL query parameters to s. opts
 // must be a struct whose fields may contain "url" tags (e.g. ListOptions).
 //
-// Parameters already present in s are preserved; parameters set in opts take
-// precedence only for the keys opts actually carries. Because ListOptions
-// fields are tagged omitempty, a zero PerPage neither drops other existing
-// query parameters nor introduces a conflicting per_page value — the server
-// default page size simply applies.
+// Existing query parameters are preserved; opts only overrides the keys it
+// actually carries, so a zero PerPage never introduces a per_page value.
 func addOptions(s string, opts interface{}) (string, error) {
 	if opts == nil {
 		return s, nil
@@ -228,8 +218,7 @@ func (c *Client) Do(ctx context.Context, req *http.Request) (*Response, error) {
 		return nil, err
 	}
 
-	// Note: the response body is NOT closed here. Callers must consume it
-	// (e.g. via decodeJSON in the endpoint methods), which closes it.
+	// The body is closed by the caller (endpoint methods decode it first).
 
 	response := newResponse(httpResp)
 
